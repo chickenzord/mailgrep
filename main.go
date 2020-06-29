@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sort"
 	"time"
 
 	"github.com/chickenzord/mailgrep/filter"
 	"github.com/emersion/go-imap"
-	"github.com/emersion/go-imap/client"
 	"github.com/joho/godotenv"
 )
 
@@ -21,14 +19,8 @@ type Printer interface {
 type SubjectPrinter struct {
 }
 
-func SortByDateDesc(messages []*imap.Message) {
-	sort.Slice(messages[:], func(i, j int) bool {
-		return messages[i].Envelope.Date.After(messages[j].Envelope.Date)
-	})
-}
-
 func (e *SubjectPrinter) Print(msg *imap.Message) string {
-	return msg.Envelope.Date.String() + " " + msg.Envelope.Subject
+	return msg.Envelope.Subject
 }
 
 func main() {
@@ -52,6 +44,9 @@ func main() {
 	username := os.Getenv("IMAP_USERNAME")
 	password := os.Getenv("IMAP_PASSWORD")
 	address := fmt.Sprintf("%s:%s", hostname, port)
+	if hostname == "" {
+		log.Fatal("IMAP_HOSTNAME is required")
+	}
 
 	// Load filters
 	printer := &SubjectPrinter{}
@@ -63,52 +58,22 @@ func main() {
 		filters = append(filters, filter.Within(within))
 	}
 
-	// Connect to IMAP
-	c, err := client.DialTLS(address, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer c.Logout()
-	if err := c.Login(username, password); err != nil {
-		log.Fatal(err)
-	}
-
-	// Switch mailbox
-	mbox, err := c.Select(mailbox, false)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if mbox.Messages == 0 {
-		return
-	}
-
-	// Fetch messages
-	seqset := new(imap.SeqSet)
-	seqset.AddRange(1, mbox.Messages)
-	result := make(chan *imap.Message, mbox.Messages)
-	err = c.Fetch(seqset, []imap.FetchItem{imap.FetchEnvelope}, result)
+	messages, err := ListEmail(
+		&ImapConfig{
+			Address:  address,
+			Username: username,
+			Password: password,
+		},
+		&ListRequest{
+			Mailbox: mailbox,
+			Filters: filters,
+		},
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Filter and Sort
-	messages := []*imap.Message{}
-	for msg := range result {
-		ok := true
-		for _, filter := range filters {
-			if !filter.Filter(msg) {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			messages = append(messages, msg)
-		}
-	}
-	SortByDateDesc(messages)
-
-	// Print
 	for _, msg := range messages {
-		fmt.Println(printer.Print(msg))
+		fmt.Println(printer.Print(&msg))
 	}
 }
