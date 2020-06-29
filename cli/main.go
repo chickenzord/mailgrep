@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/chickenzord/mailgrep"
 	"github.com/chickenzord/mailgrep/filter"
 	"github.com/emersion/go-imap"
 	"github.com/joho/godotenv"
@@ -24,6 +25,10 @@ func (e *SubjectPrinter) Print(msg *imap.Message) string {
 }
 
 func main() {
+	Start()
+}
+
+func Start() {
 	// Parse args
 	var dotenv string
 	var mailbox string
@@ -58,13 +63,13 @@ func main() {
 		filters = append(filters, filter.Within(within))
 	}
 
-	messages, err := ListEmail(
-		&ImapConfig{
+	messages, err := mailgrep.ListEmail(
+		&mailgrep.ImapConfig{
 			Address:  address,
 			Username: username,
 			Password: password,
 		},
-		&ListRequest{
+		&mailgrep.ListRequest{
 			Mailbox: mailbox,
 			Filters: filters,
 		},
